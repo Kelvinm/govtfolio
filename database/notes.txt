@@ -1,0 +1,139 @@
+Please create a database schema for a government trading activity project:
+
+1. Trades Table:
+    • Security Ticker
+    • Audit Dates and Times
+    • Purchase Price
+
+2. People Table (Senators and Congressmen):
+    • First Name
+    • Last Name
+    • ID
+    • Party
+    • State
+    • Term
+
+3. Committees Table:
+    • Committee ID
+    • Name
+    • Subject Matter / description
+    * Dates
+
+
+    • Representative ID
+    • Start Date
+    • End Date Table:
+    • Committee ID
+    • Representative ID
+
+
+
+Schema:
+-- Create enum types for static values
+CREATE TYPE position_type AS ENUM ('Senator', 'Representative');
+CREATE TYPE party_type AS ENUM ('Democratic', 'Republican', 'Independent');
+CREATE TYPE trade_type AS ENUM ('buy', 'sell');
+
+-- People table (for both Senators and Representatives)
+CREATE TABLE people (
+    id SERIAL PRIMARY KEY,
+    first_name VARCHAR(50) NOT NULL,
+    last_name VARCHAR(50) NOT NULL,
+    party party_type NOT NULL,
+    state CHAR(2) NOT NULL,
+    position position_type NOT NULL,
+    term_start_date DATE NOT NULL,
+    term_end_date DATE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create index for common queries
+CREATE INDEX idx_people_state ON people(state);
+CREATE INDEX idx_people_party ON people(party);
+CREATE INDEX idx_people_position ON people(position);
+
+-- Committees table
+CREATE TABLE committees (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(200) NOT NULL UNIQUE,
+    subject_matter VARCHAR(200),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Committee memberships (junction table)
+CREATE TABLE committee_memberships (
+    id SERIAL PRIMARY KEY,
+    committee_id INTEGER REFERENCES committees(id),
+    person_id INTEGER REFERENCES people(id),
+    membership_start_date DATE NOT NULL,
+    membership_end_date DATE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT valid_date_range 
+        CHECK (membership_end_date IS NULL OR membership_end_date > membership_start_date)
+);
+
+-- Create indices for foreign keys and date ranges
+CREATE INDEX idx_committee_memberships_committee ON committee_memberships(committee_id);
+CREATE INDEX idx_committee_memberships_person ON committee_memberships(person_id);
+CREATE INDEX idx_committee_memberships_dates ON committee_memberships(membership_start_date, membership_end_date);
+
+-- Trades table
+CREATE TABLE trades (
+    id SERIAL PRIMARY KEY,
+    person_id INTEGER REFERENCES people(id),
+    security_ticker VARCHAR(20) NOT NULL,
+    trade_date DATE NOT NULL,
+    disclosure_date DATE NOT NULL,
+    trade_type trade_type NOT NULL,
+    amount_range VARCHAR(50), -- For ranges like "50K-100K"
+    volume INTEGER,
+    price_per_share DECIMAL(10,2),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT valid_disclosure_date 
+        CHECK (disclosure_date >= trade_date)
+);
+
+-- Create indices for common queries
+CREATE INDEX idx_trades_person ON trades(person_id);
+CREATE INDEX idx_trades_ticker ON trades(security_ticker);
+CREATE INDEX idx_trades_dates ON trades(trade_date, disclosure_date);
+
+-- Create a trigger function to update timestamps
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+-- Create triggers for all tables
+CREATE TRIGGER update_people_updated_at
+    BEFORE UPDATE ON people
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_committees_updated_at
+    BEFORE UPDATE ON committees
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_committee_memberships_updated_at
+    BEFORE UPDATE ON committee_memberships
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_trades_updated_at
+    BEFORE UPDATE ON trades
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- Add comments for documentation
+COMMENT ON TABLE people IS 'Stores information about members of Congress (both Senators and Representatives)';
+COMMENT ON TABLE committees IS 'Congressional committees';
+COMMENT ON TABLE committee_memberships IS 'Junction table tracking committee membership history';
+COMMENT ON TABLE trades IS 'Stock trades reported by members of Congress';
