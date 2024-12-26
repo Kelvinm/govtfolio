@@ -6,35 +6,15 @@ from urllib.parse import urljoin
 import yfinance as yf
 from datetime import datetime
 
+from utils import convert_dates
+
+
 import warnings
 
 with warnings.catch_warnings():
     warnings.simplefilter(action='ignore', category=FutureWarning)
 
-def convert_dates(df, columns):
-    """
-    Converts specified columns in the DataFrame to datetime format.
-    Replaces entries with 'today' (case-insensitive) with the current date.
 
-    Parameters:
-    - df (pd.DataFrame): The DataFrame containing the date columns.
-    - columns (list): List of column names to convert.
-
-    Returns:
-    - pd.DataFrame: DataFrame with converted date columns.
-    """
-    for column in columns:
-        # Replace 'today' (case-insensitive) with today's date as string
-        df[column] = df[column].replace(
-            to_replace=r'(?i)^today$',  # Regex to match 'today' case-insensitively
-            value=datetime.today().strftime('%Y-%m-%d'),
-            regex=True
-        )
-        
-        # Convert the column to datetime
-        df[column] = pd.to_datetime(df[column], errors='coerce')
-        
-    return df
 
 def extract_trade_table_with_links(response, base_url):
     soup = BeautifulSoup(response.text, 'html.parser')
@@ -77,10 +57,7 @@ def extract_trade_table_with_links(response, base_url):
 
     return df
 
-def calculate_percentage_change(df):
-    
-    df['%change'] = df['close'].pct_change() * 100
-    return df
+
 
 def fetch_ticker_history(tickers, period='3mo'):
     """
@@ -184,10 +161,10 @@ def main(base_url):
     trade_table = extract_trade_table_with_links(response, base_url)
     print(trade_table)
     filtered_list = list(filter(lambda x: x is not None, trade_table['ticker']))
-    hist_df = fetch_ticker_history(filtered_list, period='3mo')
+    hist_df = fetch_ticker_history(filtered_list, period='6mo')
         
     percentage_changes = calculate_returns(trade_table, hist_df)
-    print(percentage_changes)
+    print(percentage_changes.drop_duplicates())
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process trade data from a given base URL.")
