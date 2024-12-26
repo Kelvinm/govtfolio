@@ -1,72 +1,34 @@
 # pipelines/assets/legislators.py
 from dagster import asset, AssetExecutionContext
-import requests
-from bs4 import BeautifulSoup
+
 
 import pandas as pd
-
-from sqlalchemy.orm import Session
-from src.database import engine
 from src.models.legislator import Legislator
+from src.database import SessionLocal
 
 @asset
-def extract_legislators():
-    """
-    Extract unique legislators from the trade data
-    """
-    # Example URL - you'll need to provide the actual URL
-    base_url = "https://www.capitoltrades.com/trades"
-    response = requests.get(base_url)
-    soup = BeautifulSoup(response.text, 'html.parser')
+def staged_legislators(context: AssetExecutionContext, 
+                      raw_legislator_securities: dict) -> pd.DataFrame:
+    """Store legislator data"""
+    legislators_df = raw_legislator_securities['legislators']
+
+    # # Debug logging
+    # null_party = legislators_df[legislators_df['party'].isnull()]
+    # if not null_party.empty:
+    #     context.log.warn(f"Found legislators with null party: {null_party.to_dict('records')}")
     
-    # Extract unique legislators
-    legislators_data = []  # This would be populated from your scraping
-    
-    with Session(engine) as session:
-        for leg_data in legislators_data:
-            legislator = Legislator(**leg_data)
-            session.add(legislator)
-        session.commit()
 
-    return legislators_data
+    with SessionLocal() as db:
+        for _, row in legislators_df.iterrows():
+            legislator = Legislator(
+                first_name=row['name'].split()[0],
+                last_name=' '.join(row['name'].split()[1:]),
+                party = row['party'].upper() if pd.notna(row['party']) else 'INDEPENDENT',
+                state=row['state'],
+                position=row['chamber']
+            )
+            db.merge(legislator)
+        db.commit()
+    return legislators_df
 
-
-
-
-@asset
-def raw_politicians(context: AssetExecutionContext, staged_committees: pd.DataFrame) -> pd.DataFrame:
-    """Extract raw politician data from each committee page"""
-    politicians = []
-    for _, committee in staged_committees.iterrows():
-        url = committee['url']
-        # Scrape politician data from committee page
-        # Add to politicians list
-    return pd.DataFrame(politicians)
-
-@asset
-def staged_politicians(context: AssetExecutionContext, raw_politicians: pd.DataFrame):
-    """Clean and load politician data into PostgreSQL"""
-    # Database operations for politicians
-    pass
-
-# pipelines/assets/trades.py
-
-@asset
-def raw_trades(context: AssetExecutionContext, staged_politicians: pd.DataFrame) -> pd.DataFrame:
-    """Extract trade data for each politician"""
-    trades = []
-    for _, politician in staged_politicians.iterrows():
-        pass
-        # Scrape trade data from politician page
-        # Add to trades list
-    return pd.DataFrame(trades)
-
-@asset
-def staged_trades(context: AssetExecutionContext, raw_trades: pd.DataFrame):
-    """Clean and load trade data into PostgreSQL"""
-    # Database operations for trades
-    pass
-
-
-
-assets = [extract_legislators]
+assets = [staged_legislators]

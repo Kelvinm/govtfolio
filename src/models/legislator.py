@@ -5,13 +5,13 @@ from enum import Enum as PyEnum
 from src.database import Base
 
 class LegislatorPosition(PyEnum):  
-    SENATOR = "Senator"
-    REPRESENTATIVE = "Representative"
+    SENATE = "SENATE"
+    HOUSE = "HOUSE"
 
 class LegislatorParty(PyEnum):     
-    DEMOCRATIC = "Democratic"
-    REPUBLICAN = "Republican"
-    INDEPENDENT = "Independent"
+    DEMOCRAT = "DEMOCRAT"
+    REPUBLICAN = "REPUBLICAN"
+    INDEPENDENT = "INDEPENDENT"
 
 class Legislator(Base):
     __tablename__ = "legislators"
@@ -22,8 +22,8 @@ class Legislator(Base):
     party = Column(Enum(LegislatorParty), nullable=False)  
     state = Column(String(2), nullable=False)
     position = Column(Enum(LegislatorPosition), nullable=False)  
-    term_start_date = Column(Date, nullable=False)
-    term_end_date = Column(Date)
+    term_start_date = Column(Date, nullable=True)  
+    term_end_date = Column(Date, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

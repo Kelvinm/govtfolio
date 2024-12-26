@@ -7,15 +7,17 @@ from src.database import Base
 class TradeType(PyEnum):
     BUY = "buy"
     SELL = "sell"
+    EXCHANGE = "exchange"
+    RECEIVE = "receive"
 
 class Trade(Base):
     __tablename__ = "trades"
 
     id = Column(Integer, primary_key=True)
     legislator_id = Column(Integer, ForeignKey("legislators.id"))
-    security_ticker = Column(String(20), nullable=False)
-    trade_date = Column(Date, nullable=False)
-    disclosure_date = Column(Date, nullable=False)
+    security_ticker = Column(String(20), nullable=True)
+    trade_date = Column(Date, nullable=True)
+    disclosure_date = Column(Date, nullable=True)
     trade_type = Column(Enum(TradeType), nullable=False)
     amount_range = Column(String(50))
     volume = Column(Integer)

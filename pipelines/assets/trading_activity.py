@@ -102,7 +102,7 @@ def extract_trade_table_with_links(base_url):
 
 
 @asset
-def raw_legislator_securities(context: AssetExecutionContext, committees_from_db: pd.DataFrame) -> pd.DataFrame:
+def raw_legislator_securities(context: AssetExecutionContext, committees_from_db: pd.DataFrame) -> dict:
     """
     For each committee's URL, fetch the detail page, parse trades (legislators, securities, etc.).
     Returns a DataFrame of combined results.
@@ -123,7 +123,7 @@ def raw_legislator_securities(context: AssetExecutionContext, committees_from_db
             resp.raise_for_status()
             
             # Parse the detail page:
-            detail_df = extract_trade_table_with_links(resp, base_url="https://www.capitoltrades.com")
+            detail_df = extract_trade_table_with_links(url)
             
             # Tag these rows with committee info
             detail_df["committee_id"] = row["id"]
@@ -140,12 +140,19 @@ def raw_legislator_securities(context: AssetExecutionContext, committees_from_db
 
     combined_df = pd.concat(all_rows, ignore_index=True)
 
+    legislators_df = combined_df[['name', 'party', 'chamber', 'state']].drop_duplicates()
+    trades_df = combined_df[['name', 'issuer', 'ticker', 'published', 'traded', 'type', 'size']]
+    
     context.add_output_metadata({
-        "num_detail_rows": len(combined_df),
-        "sample": combined_df.head(3).to_dict(orient="records"),
+        "legislators_count": len(legislators_df),
+        "trades_count": len(trades_df),
+        "preview": legislators_df.head(3).to_markdown()
     })
 
-    return combined_df
+    return {
+        'legislators': legislators_df,
+        'trades': trades_df
+    }
 
 def split_name_string(s):
     if 'Republican' in s:
@@ -164,3 +171,27 @@ def split_name_string(s):
 
     state = s[-2:]
     return party, chamber, state
+
+if __name__ == "__main__":
+   # Test URL for a specific committee
+    test_url = "https://www.capitoltrades.com/committees/hsvr"
+  
+    try:
+        print("Testing single committee extraction...")
+        df = extract_trade_table_with_links(test_url)
+        print(f"\nFound {len(df)} trades")
+        print("\nSample data:")
+        print(df.head(2).to_markdown())
+    
+        print("\nTesting full asset...")
+        test_committees = pd.DataFrame([{
+            'id': 1,
+            'name': 'Test Committee',
+            'url': test_url
+        }])
+        result_df = raw_legislator_securities(None, test_committees)
+        print(f"\nProcessed {len(result_df)} total trades")
+    
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        raise
