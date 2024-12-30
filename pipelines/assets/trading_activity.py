@@ -8,9 +8,10 @@ from bs4 import BeautifulSoup
 from src.utils import convert_dates
 from src.database import SessionLocal
 from src.models.committee import Committee
+from .committees import staged_committees
 
 
-@asset
+@asset(deps=[staged_committees])
 def committees_from_db(context: AssetExecutionContext) -> pd.DataFrame:
     """
     Reads all committees from the database and returns a DataFrame.
@@ -24,29 +25,32 @@ def committees_from_db(context: AssetExecutionContext) -> pd.DataFrame:
 
     data = []
     for c in committees:
-        data.append({
-            'id': c.id,
-            'name': c.name,
-            'url': c.url,  # Assuming you have a url column on Committee
-        })
+        data.append(
+            {
+                "id": c.id,
+                "name": c.name,
+                "url": c.url,  # Assuming you have a url column on Committee
+            }
+        )
     df = pd.DataFrame(data)
-    
-    context.add_output_metadata({
-        "num_committees_in_db": len(df),
-        "sample": df.head(3).to_dict(orient="records"),
-    })
+
+    context.add_output_metadata(
+        {
+            "num_committees_in_db": len(df),
+            "sample": df.head(3).to_dict(orient="records"),
+        }
+    )
 
     return df
-
 
 
 def extract_trade_table_with_links(base_url):
     response = requests.get(base_url)
     response.raise_for_status()
-    soup = BeautifulSoup(response.text, 'html.parser')
-    table = soup.find('table')  # Modify selector if needed
-    
-    title = soup.find('h1').get_text(strip=True)
+    soup = BeautifulSoup(response.text, "html.parser")
+    table = soup.find("table")  # Modify selector if needed
+
+    title = soup.find("h1").get_text(strip=True)
     df = pd.read_html(str(table))[0]
 
     detail_links = []
@@ -58,51 +62,73 @@ def extract_trade_table_with_links(base_url):
     states = []
     issuers = []
 
-    for row in table.find_all('tr')[1:]:  # Skip header
-        link_tag = row.find('a', href=True)
+    for row in table.find_all("tr")[1:]:  # Skip header
+        link_tag = row.find("a", href=True)
         if link_tag:
-            full_url = urljoin(base_url, link_tag['href'])
+            full_url = urljoin(base_url, link_tag["href"])
             detail_links.append(full_url)
         else:
             detail_links.append(None)
 
-        issuer_ticker_span = row.find('span', class_='q-field issuer-ticker')
+        issuer_ticker_span = row.find("span", class_="q-field issuer-ticker")
         if issuer_ticker_span:
             issuer_ticker_text = issuer_ticker_span.get_text(strip=True)
-            parts = issuer_ticker_text.split(':')
+            parts = issuer_ticker_text.split(":")
             if len(parts) == 2:
                 ticker, currency = parts
             else:
                 ticker, currency = None, None
         else:
             ticker, currency = None, None
-        party, chamber, state = split_name_string(row.find('div', class_='politician-info').get_text(strip=True))
-        
-        names.append(row.find('h2', class_='politician-name').get_text(strip=True))
-        issuers.append( row.find(class_ = 'issuer-name').get_text(strip=True))
-        parties.append(party)
-        chambers.append(chamber)    
+        party, chamber, state = split_name_string(
+            row.find("div", class_="politician-info").get_text(strip=True)
+        )
+
+        names.append(row.find("h2", class_="politician-name").get_text(strip=True))
+        issuers.append(row.find(class_="issuer-name").get_text(strip=True))
+        parties.append(party.upper())
+        chambers.append(chamber.upper())
         states.append(state)
         tickers.append(ticker)
         currencies.append(currency)
 
-    df['committee'] = title
-    df['party'], df['chamber'], df['state'] = parties, chambers, states
-    df['issuer'] = issuers
-    df['name'] = names
-    df['detail_link'] = detail_links
-    df['ticker'] = tickers
-    df['currency'] = currencies
-    df = convert_dates(df, ['Published', 'Traded'])  # Convert date columns to datetime    
+    df["committee"] = title
+    df["party"] = parties
+    df["chamber"]= chambers
+    df["state"] = states
+    df["issuer"] = issuers
+    df["name"] = names
+    df["detail_link"] = detail_links
+    df["ticker"] = tickers
+    df["currency"] = currencies
+    df = convert_dates(df, ["Published", "Traded"])  # Convert date columns to datetime
 
     # Convert all column names to lower case
     df.columns = df.columns.str.lower()
 
-    return df[['committee', 'name', 'party', 'chamber', 'state', 'issuer', 'ticker', 'currency', 'published', 'traded', 'type', 'size', 'detail_link']]
+    return df[
+        [
+            "committee",
+            "name",
+            "party",
+            "chamber",
+            "state",
+            "issuer",
+            "ticker",
+            "currency",
+            "published",
+            "traded",
+            "type",
+            "size",
+            "detail_link",
+        ]
+    ]
 
 
 @asset
-def raw_legislator_securities(context: AssetExecutionContext, committees_from_db: pd.DataFrame) -> dict:
+def raw_legislator_securities(
+    context: AssetExecutionContext, committees_from_db: pd.DataFrame
+) -> dict:
     """
     For each committee's URL, fetch the detail page, parse trades (legislators, securities, etc.).
     Returns a DataFrame of combined results.
@@ -117,21 +143,23 @@ def raw_legislator_securities(context: AssetExecutionContext, committees_from_db
         url = row.get("url")
         if not url:
             continue
-        
+
         try:
             resp = requests.get(url, timeout=10)
             resp.raise_for_status()
-            
+
             # Parse the detail page:
             detail_df = extract_trade_table_with_links(url)
-            
+
             # Tag these rows with committee info
             detail_df["committee_id"] = row["id"]
             detail_df["committee_name"] = row["name"]
 
             all_rows.append(detail_df)
         except requests.RequestException as e:
-            context.log.error(f"Failed to fetch detail for committee {row['name']}: {e}")
+            context.log.error(
+                f"Failed to fetch detail for committee {row['name']}: {e}"
+            )
         except Exception as e:
             context.log.error(f"Error parsing detail for committee {row['name']}: {e}")
 
@@ -140,58 +168,61 @@ def raw_legislator_securities(context: AssetExecutionContext, committees_from_db
 
     combined_df = pd.concat(all_rows, ignore_index=True)
 
-    legislators_df = combined_df[['name', 'party', 'chamber', 'state']].drop_duplicates()
-    trades_df = combined_df[['name', 'issuer', 'ticker', 'published', 'traded', 'type', 'size']]
-    
-    context.add_output_metadata({
-        "legislators_count": len(legislators_df),
-        "trades_count": len(trades_df),
-        "preview": legislators_df.head(3).to_markdown()
-    })
+    legislators_df = combined_df[
+        ["name", "party", "chamber", "state"]
+    ].drop_duplicates()
+    trades_df = combined_df[
+        ["name", "issuer", "ticker", "published", "traded", "type", "size"]
+    ]
 
-    return {
-        'legislators': legislators_df,
-        'trades': trades_df
-    }
+    context.add_output_metadata(
+        {
+            "legislators_count": len(legislators_df),
+            "trades_count": len(trades_df),
+            "preview": legislators_df.head(3).to_markdown(),
+        }
+    )
+
+    return {"legislators": legislators_df, "trades": trades_df}
+
 
 def split_name_string(s):
-    if 'Republican' in s:
-        party = 'Republican'
-    elif 'Democrat' in s:
-        party = 'Democrat'
+    if "Republican" in s:
+        party = "Republican"
+    elif "Democrat" in s:
+        party = "Democrat"
     else:
         party = None
 
-    if 'Senate' in s:
-        chamber = 'Senate'
-    elif 'House' in s:
-        chamber = 'House'
+    if "Senate" in s:
+        chamber = "SENATE"
+    elif "House" in s:
+        chamber = "HOUSE"
     else:
         chamber = None
 
     state = s[-2:]
     return party, chamber, state
 
+
 if __name__ == "__main__":
-   # Test URL for a specific committee
+    # Test URL for a specific committee
     test_url = "https://www.capitoltrades.com/committees/hsvr"
-  
+
     try:
         print("Testing single committee extraction...")
         df = extract_trade_table_with_links(test_url)
         print(f"\nFound {len(df)} trades")
         print("\nSample data:")
         print(df.head(2).to_markdown())
-    
+
         print("\nTesting full asset...")
-        test_committees = pd.DataFrame([{
-            'id': 1,
-            'name': 'Test Committee',
-            'url': test_url
-        }])
+        test_committees = pd.DataFrame(
+            [{"id": 1, "name": "Test Committee", "url": test_url}]
+        )
         result_df = raw_legislator_securities(None, test_committees)
         print(f"\nProcessed {len(result_df)} total trades")
-    
+
     except Exception as e:
         print(f"Error: {str(e)}")
         raise
