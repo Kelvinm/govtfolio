@@ -3,19 +3,30 @@ from datetime import date, datetime
 from enum import Enum
 from typing import Optional
 
-# Enums (matching our SQLAlchemy models)
-class LegislatorPosition(str, Enum):
-    SENATOR = "Senator"
-    REPRESENTATIVE = "Representative"
+# # Enums (matching our SQLAlchemy models)
+# class LegislatorPosition(str, Enum):
+#     SENATOR = "Senator"
+#     REPRESENTATIVE = "Representative"
 
-class LegislatorParty(str, Enum):
-    DEMOCRATIC = "Democratic"
-    REPUBLICAN = "Republican"
-    INDEPENDENT = "Independent"
+# class LegislatorParty(str, Enum):
+#     DEMOCRATIC = "Democratic"
+#     REPUBLICAN = "Republican"
+#     INDEPENDENT = "Independent"
+
+class LegislatorPosition(str, Enum):  
+    SENATE = "SENATE"
+    HOUSE = "HOUSE"
+
+class LegislatorParty(str, Enum):     
+    DEMOCRAT = "DEMOCRAT"
+    REPUBLICAN = "REPUBLICAN"
+    INDEPENDENT = "INDEPENDENT"
 
 class TradeType(str, Enum):
-    BUY = "buy"
-    SELL = "sell"
+    BUY = "BUY"
+    SELL = "SELL"
+    EXCHANGE = "EXCHANGE"
+    RECEIVE = "RECEIVE"
 
 # Base Models (for creating/updating)
 class LegislatorBase(BaseModel):

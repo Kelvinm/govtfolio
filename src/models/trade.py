@@ -5,10 +5,10 @@ from enum import Enum as PyEnum
 from src.database import Base
 
 class TradeType(PyEnum):
-    BUY = "buy"
-    SELL = "sell"
-    EXCHANGE = "exchange"
-    RECEIVE = "receive"
+    BUY = "BUY"
+    SELL = "SELL"
+    EXCHANGE = "EXCHANGE"
+    RECEIVE = "RECEIVE"
 
 class Trade(Base):
     __tablename__ = "trades"
